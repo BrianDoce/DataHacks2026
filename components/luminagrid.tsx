@@ -1560,7 +1560,7 @@ function Forecast() {
 // MAIN COMPONENT
 // ============================================================================
 
-export default function SolarLedger() {
+export default function LuminaGrid() {
   const [activeView, setActiveView] = useState<"home" | "analytics" | "scorecard" | "forecast">("home")
   const [selectedCity, setSelectedCity] = useState(MOCK_DATA.cities[0])
   const [isLoading, setIsLoading] = useState(false)

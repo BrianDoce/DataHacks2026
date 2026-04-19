@@ -1,5 +1,5 @@
-import SolarLedger from "@/components/solar-ledger"
+import LuminaGrid from "@/components/luminagrid"
 
 export default function Page() {
-  return <SolarLedger />
+  return <LuminaGrid />
 }

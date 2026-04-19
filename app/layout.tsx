@@ -10,7 +10,7 @@ const inter = Inter({
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'SolarLedger - Solar Intelligence Dashboard',
+  title: 'LuminaGrid - Solar Intelligence Dashboard',
   description: 'Data analytics and forecasting platform for solar energy permitting data',
   generator: 'v0.app',
   icons: {
