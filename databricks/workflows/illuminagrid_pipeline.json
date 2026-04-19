@@ -1,0 +1,202 @@
+{
+  "name": "illuminagrid_pipeline",
+  "description": "Daily IlluminaGrid ETL: ingest ZenPower permits → download NREL weather → silver normalise → PySAM simulate → EIA rate join → city summaries",
+  "schedule": {
+    "quartz_cron_expression": "0 0 2 * * ?",
+    "timezone_id": "UTC",
+    "pause_status": "UNPAUSED"
+  },
+  "email_notifications": {
+    "on_failure": [
+      "{{secrets/illuminagrid/team_email}}"
+    ],
+    "no_alert_for_skipped_runs": true
+  },
+  "max_concurrent_runs": 1,
+  "tasks": [
+    {
+      "task_key": "ingest_zenpower",
+      "description": "Pull raw permit JSON from ZenPower API and upsert into bronze.permits",
+      "notebook_task": {
+        "notebook_path": "databricks/notebooks/01_bronze_ingest_zenpower",
+        "base_parameters": {
+          "city": "San Diego",
+          "state": "CA"
+        },
+        "source": "GIT"
+      },
+      "job_cluster_key": "small_cluster",
+      "timeout_seconds": 600,
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": false
+    },
+    {
+      "task_key": "download_weather",
+      "description": "Fetch NREL NSRDB TMY weather files for all target cities and cache to DBFS",
+      "depends_on": [
+        { "task_key": "ingest_zenpower" }
+      ],
+      "notebook_task": {
+        "notebook_path": "databricks/notebooks/02_download_weather",
+        "base_parameters": {
+          "cities": "San Diego,CA;Austin,TX;Chicago,IL",
+          "force_refresh": "false"
+        },
+        "source": "GIT"
+      },
+      "job_cluster_key": "small_cluster",
+      "timeout_seconds": 900,
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": false
+    },
+    {
+      "task_key": "normalize_permits",
+      "description": "Normalise bronze permits, resolve ZIP centroids, and write to silver.permits",
+      "depends_on": [
+        { "task_key": "download_weather" }
+      ],
+      "notebook_task": {
+        "notebook_path": "databricks/notebooks/03_silver_normalize",
+        "base_parameters": {},
+        "source": "GIT"
+      },
+      "job_cluster_key": "small_cluster",
+      "timeout_seconds": 600,
+      "max_retries": 1,
+      "min_retry_interval_millis": 30000,
+      "retry_on_timeout": false
+    },
+    {
+      "task_key": "simulate_pvwatts",
+      "description": "Run PySAM PVWatts v8 simulation for unprocessed silver permits and write to gold.enriched_permits",
+      "depends_on": [
+        { "task_key": "normalize_permits" }
+      ],
+      "notebook_task": {
+        "notebook_path": "databricks/notebooks/04_gold_simulate",
+        "base_parameters": {},
+        "source": "GIT"
+      },
+      "job_cluster_key": "simulate_cluster",
+      "timeout_seconds": 3600,
+      "max_retries": 1,
+      "min_retry_interval_millis": 120000,
+      "retry_on_timeout": false
+    },
+    {
+      "task_key": "join_eia_rates",
+      "description": "Fetch EIA residential electricity rates per state and merge financial fields into gold.enriched_permits",
+      "depends_on": [
+        { "task_key": "simulate_pvwatts" }
+      ],
+      "notebook_task": {
+        "notebook_path": "databricks/notebooks/05_gold_eia_join",
+        "base_parameters": {},
+        "source": "GIT"
+      },
+      "job_cluster_key": "small_cluster",
+      "timeout_seconds": 600,
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": false
+    },
+    {
+      "task_key": "compute_city_summaries",
+      "description": "Aggregate enriched permits into city-level metrics and HYI scores in gold.city_summaries",
+      "depends_on": [
+        { "task_key": "join_eia_rates" }
+      ],
+      "notebook_task": {
+        "notebook_path": "databricks/notebooks/06_gold_city_summaries",
+        "base_parameters": {},
+        "source": "GIT"
+      },
+      "job_cluster_key": "small_cluster",
+      "timeout_seconds": 600,
+      "max_retries": 1,
+      "min_retry_interval_millis": 30000,
+      "retry_on_timeout": false
+    }
+  ],
+  "job_clusters": [
+    {
+      "job_cluster_key": "small_cluster",
+      "new_cluster": {
+        "spark_version": "15.4.x-scala2.12",
+        "node_type_id": "i3.xlarge",
+        "driver_node_type_id": "i3.xlarge",
+        "num_workers": 2,
+        "spark_conf": {
+          "spark.databricks.delta.preview.enabled": "true",
+          "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+          "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        },
+        "azure_attributes": {
+          "availability": "ON_DEMAND_AZURE",
+          "first_on_demand": 1,
+          "spot_bid_max_price": -1
+        },
+        "aws_attributes": {
+          "availability": "ON_DEMAND",
+          "first_on_demand": 1,
+          "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+          "ebs_volume_count": 1,
+          "ebs_volume_size": 32
+        },
+        "enable_elastic_disk": true,
+        "runtime_engine": "STANDARD"
+      }
+    },
+    {
+      "job_cluster_key": "simulate_cluster",
+      "new_cluster": {
+        "spark_version": "15.4.x-scala2.12",
+        "node_type_id": "i3.xlarge",
+        "driver_node_type_id": "i3.xlarge",
+        "autoscale": {
+          "min_workers": 4,
+          "max_workers": 8
+        },
+        "init_scripts": [
+          {
+            "dbfs": {
+              "destination": "dbfs:/illuminagrid/init/install_pysam.sh"
+            }
+          }
+        ],
+        "spark_conf": {
+          "spark.databricks.delta.preview.enabled": "true",
+          "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+          "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        },
+        "azure_attributes": {
+          "availability": "ON_DEMAND_AZURE",
+          "first_on_demand": 1,
+          "spot_bid_max_price": -1
+        },
+        "aws_attributes": {
+          "availability": "ON_DEMAND",
+          "first_on_demand": 1,
+          "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+          "ebs_volume_count": 1,
+          "ebs_volume_size": 32
+        },
+        "enable_elastic_disk": true,
+        "runtime_engine": "STANDARD"
+      }
+    }
+  ],
+  "git_source": {
+    "git_url": "https://github.com/brandonng2/DataHacks2026",
+    "git_provider": "gitHub",
+    "git_branch": "main"
+  },
+  "tags": {
+    "project": "illuminagrid",
+    "env": "prod",
+    "team": "datahacks2026"
+  },
+  "format": "MULTI_TASK"
+}

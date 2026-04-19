@@ -1,0 +1,14 @@
+{
+  "_fixture": "GET /api/city/San%20Diego/summary",
+  "_note": "Replace with live endpoint once backend is running.",
+  "city": "San Diego",
+  "state": "CA",
+  "total_permits": 1247,
+  "total_active_permits": 1089,
+  "total_annual_kwh": 18245320.0,
+  "total_annual_savings_usd": 4013970.4,
+  "total_co2_offset_metric_tons": 3831.52,
+  "avg_system_size_kw": 9.2,
+  "high_yield_index_score": 87.34,
+  "last_updated": "2026-04-19T02:00:00Z"
+}
