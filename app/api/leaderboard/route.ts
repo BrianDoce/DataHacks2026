@@ -1,0 +1,36 @@
+import { NextResponse } from "next/server"
+
+const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000"
+
+const FIXTURE = {
+  total: 10,
+  state_filter: null,
+  entries: [
+    { rank: 1, city: "San Diego", state: "CA", total_permits: 1247, total_active_permits: 1089, total_annual_kwh: 18245320.0, total_annual_savings_usd: 4013970.4, total_co2_offset_metric_tons: 3831.52, avg_system_size_kw: 9.2, high_yield_index_score: 87.34, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 2, city: "Los Angeles", state: "CA", total_permits: 2891, total_active_permits: 2604, total_annual_kwh: 39870500.0, total_annual_savings_usd: 8771510.0, total_co2_offset_metric_tons: 8372.8, avg_system_size_kw: 8.7, high_yield_index_score: 84.91, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 3, city: "Phoenix", state: "AZ", total_permits: 3102, total_active_permits: 2789, total_annual_kwh: 52341800.0, total_annual_savings_usd: 6280916.0, total_co2_offset_metric_tons: 11013.78, avg_system_size_kw: 10.6, high_yield_index_score: 82.17, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 4, city: "Las Vegas", state: "NV", total_permits: 1876, total_active_permits: 1712, total_annual_kwh: 33841600.0, total_annual_savings_usd: 3722576.0, total_co2_offset_metric_tons: 7111.54, avg_system_size_kw: 11.1, high_yield_index_score: 79.56, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 5, city: "Austin", state: "TX", total_permits: 1543, total_active_permits: 1388, total_annual_kwh: 22194000.0, total_annual_savings_usd: 2441340.0, total_co2_offset_metric_tons: 4661.14, avg_system_size_kw: 9.0, high_yield_index_score: 76.23, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 6, city: "Denver", state: "CO", total_permits: 1198, total_active_permits: 1067, total_annual_kwh: 17816900.0, total_annual_savings_usd: 2494366.0, total_co2_offset_metric_tons: 3742.55, avg_system_size_kw: 9.4, high_yield_index_score: 73.88, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 7, city: "Sacramento", state: "CA", total_permits: 987, total_active_permits: 891, total_annual_kwh: 14900400.0, total_annual_savings_usd: 3278088.0, total_co2_offset_metric_tons: 3129.08, avg_system_size_kw: 9.4, high_yield_index_score: 71.45, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 8, city: "Miami", state: "FL", total_permits: 1124, total_active_permits: 1002, total_annual_kwh: 15231600.0, total_annual_savings_usd: 1981108.0, total_co2_offset_metric_tons: 3198.64, avg_system_size_kw: 8.6, high_yield_index_score: 68.92, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 9, city: "Albuquerque", state: "NM", total_permits: 743, total_active_permits: 671, total_annual_kwh: 12543700.0, total_annual_savings_usd: 1630681.0, total_co2_offset_metric_tons: 2634.18, avg_system_size_kw: 10.5, high_yield_index_score: 66.14, last_updated: "2026-04-19T02:00:00Z" },
+    { rank: 10, city: "Tucson", state: "AZ", total_permits: 891, total_active_permits: 778, total_annual_kwh: 9876300.0, total_annual_savings_usd: 1580208.0, total_co2_offset_metric_tons: 2074.02, avg_system_size_kw: 7.1, high_yield_index_score: 58.37, last_updated: "2026-04-19T02:00:00Z" },
+  ],
+}
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const qs = searchParams.toString()
+  try {
+    const res = await fetch(`${BACKEND}/api/leaderboard${qs ? `?${qs}` : ""}`, { cache: "no-store" })
+    if (res.ok) return NextResponse.json(await res.json())
+  } catch {}
+
+  // Filter by state if requested
+  const state = searchParams.get("state")
+  const entries = state
+    ? FIXTURE.entries.filter((e) => e.state === state.toUpperCase())
+    : FIXTURE.entries
+  return NextResponse.json({ ...FIXTURE, total: entries.length, state_filter: state, entries })
+}

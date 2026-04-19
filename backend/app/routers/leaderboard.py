@@ -14,6 +14,8 @@ from app import db
 
 router = APIRouter(tags=["leaderboard"])
 
+CATALOG = "workspace.default"
+
 
 class LeaderboardEntry(BaseModel):
     rank: int
@@ -37,49 +39,34 @@ class Leaderboard(BaseModel):
 
 @router.get("/leaderboard", response_model=Leaderboard)
 def get_leaderboard(
-    state: Optional[str] = Query(default=None, description="Filter to a single 2-letter state code"),
+    state: Optional[str] = Query(default=None),
     limit: int = Query(default=20, ge=1, le=200),
 ) -> Leaderboard:
-    """
-    Returns cities ranked by high_yield_index_score descending.
-    Optionally filtered to a single state. Rank numbers reflect the filtered
-    result, not the global rank.
-    """
     where_parts = ["high_yield_index_score IS NOT NULL"]
-    params: list = []
 
     if state is not None:
-        where_parts.append("UPPER(state) = UPPER(%s)")
-        params.append(state)
+        where_parts.append(f"UPPER(state) = UPPER('{state.upper().replace(chr(39), '')}')")
 
     where_clause = " AND ".join(where_parts)
 
-    count_sql = f"SELECT COUNT(*) FROM illuminagrid.gold.city_summaries WHERE {where_clause}"
-
+    count_sql = f"SELECT COUNT(*) FROM {CATALOG}.city_summaries WHERE {where_clause}"
     data_sql = f"""
         SELECT
-            city,
-            state,
-            total_permits,
-            total_active_permits,
-            total_annual_kwh,
-            total_annual_savings_usd,
-            total_co2_offset_metric_tons,
-            avg_system_size_kw,
-            high_yield_index_score,
-            last_updated
-        FROM illuminagrid.gold.city_summaries
+            city, state, total_permits, total_active_permits,
+            total_annual_kwh, total_annual_savings_usd,
+            total_co2_offset_metric_tons, avg_system_size_kw,
+            high_yield_index_score, last_updated
+        FROM {CATALOG}.city_summaries
         WHERE {where_clause}
         ORDER BY high_yield_index_score DESC
-        LIMIT %s
+        LIMIT {int(limit)}
     """
 
     try:
         with db.get_cursor() as cursor:
-            cursor.execute(count_sql, params)
+            cursor.execute(count_sql)
             total = cursor.fetchone()[0] or 0
-
-            cursor.execute(data_sql, params + [limit])
+            cursor.execute(data_sql)
             rows = cursor.fetchall()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc))
@@ -87,8 +74,7 @@ def get_leaderboard(
     entries = [
         LeaderboardEntry(
             rank=idx + 1,
-            city=r[0],
-            state=r[1],
+            city=r[0], state=r[1],
             total_permits=r[2] or 0,
             total_active_permits=r[3] or 0,
             total_annual_kwh=r[4] or 0.0,
